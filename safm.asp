@@ -60,12 +60,70 @@ dAttributes.Add "l", Array(1024, "Alias", False)
 dAttributes.Add "c", Array(2048, "Compressed", False)
 
 ''
+' Some common MIME types
+''
+Dim dMimeTypes
+Set dMimeTypes = Server.CreateObject("Scripting.Dictionary")
+dMimeTypes.Add "asm", "text/x-asm"
+dMimeTypes.Add "asp", "text/asp"
+dMimeTypes.Add "bat", "text/plain"
+dMimeTypes.Add "bmp", "image/bmp"
+dMimeTypes.Add "c", "text/plain"
+dMimeTypes.Add "conf", "text/plain"
+dMimeTypes.Add "cpp", "text/x-c"
+dMimeTypes.Add "css", "text/css"
+dMimeTypes.Add "csv", "text/csv"
+dMimeTypes.Add "gif", "image/gif"
+dMimeTypes.Add "h", "text/plain"
+dMimeTypes.Add "hta", "text/plain"
+dMimeTypes.Add "htm", "text/html"
+dMimeTypes.Add "html", "text/html"
+dMimeTypes.Add "java", "text/plain"
+dMimeTypes.Add "jpeg", "image/jpeg"
+dMimeTypes.Add "jpg", "image/jpeg"
+dMimeTypes.Add "json", "application/json"
+dMimeTypes.Add "list", "text/plain"
+dMimeTypes.Add "log", "text/plain"
+dMimeTypes.Add "lsp", "text/plain"
+dMimeTypes.Add "lst", "text/plain"
+dMimeTypes.Add "p", "text/plain"
+dMimeTypes.Add "pas", "text/plain"
+dMimeTypes.Add "pdf", "application/pdf"
+dMimeTypes.Add "php", "text/plain"
+dMimeTypes.Add "pl", "text/plain"
+dMimeTypes.Add "png", "image/png"
+dMimeTypes.Add "py ", "text/x-script.phyton"
+dMimeTypes.Add "rss", "application/rss+xml"
+dMimeTypes.Add "sh", "text/x-script.sh"
+dMimeTypes.Add "shtml ", "text/html"
+dMimeTypes.Add "swf", "application/x-shockwave-flash"
+dMimeTypes.Add "text", "text/plain"
+dMimeTypes.Add "txt", "text/plain"
+dMimeTypes.Add "xhtml", "application/xhtml+xml"
+dMimeTypes.Add "xml", "application/xml"
+dMimeTypes.Add "vbs", "text/plain"
+
+''
 ' Processes file for downloading
 ''
-If Not Request.QueryString("download") = "" Then
+If Not Request.QueryString("download") = "" Or Not Request.QueryString("view") = "" Then
+	Dim strFile
 	Set objFSO = Server.CreateObject("Scripting.FileSystemObject")
-	If objFSO.FileExists(Request.QueryString("download")) Then
-		Set objFile = objFSO.GetFile(Request.QueryString("download"))
+	If Not Request.QueryString("download") = "" Then
+		strFile = Request.QueryString("download")
+	Else
+		strFile = Request.QueryString("view")
+	End If
+
+	If objFSO.FileExists(strFile) Then
+		Set objFile = objFSO.GetFile(strFile)
+
+		Dim strExtension, strMimeType
+		strExtension = objFSO.GetExtensionName(objFile.Path)
+		strMimeType = "application/octet-stream"
+		If dMimeTypes.Exists(strExtension) Then
+			strMimeType = dMimeTypes.Item(strExtension)
+		End If
 
 		' ({@link http://nolovelust.com/post/classic-asp-large-file-download-code Source})
 		Dim intChunkSize, objStream, intStreamSize
@@ -78,9 +136,13 @@ If Not Request.QueryString("download") = "" Then
 		objStream.LoadFromFile objFile.Path
 		intStreamSize = objStream.Size
 
-		Response.ContentType = "application/octet-stream"
+		Response.ContentType = strMimeType
 		'Response.AddHeader "Content-Length", intStreamSize
-		Response.AddHeader "Content-Disposition", "attachment;filename=""" & objFile.Name & """;"
+		If Not Request.QueryString("download") = "" Then
+			Response.AddHeader "Content-Disposition", "attachment;filename=""" & objFile.Name & """;"
+		Else
+			Response.AddHeader "Content-Disposition", "inline;filename=""" & objFile.Name & """;"
+		End If
 		Response.Buffer = False
 
 		For i = 1 To intStreamSize \ intChunkSize
@@ -105,7 +167,7 @@ If Not Request.QueryString("download") = "" Then
 End If
 
 ''
-' Processes file for downloading
+' Recursive directory listing
 ''
 If Not Request.QueryString("list") = "" Then
 
@@ -142,6 +204,7 @@ End If
 		table td, table th {padding: 5px;}
 		table tr:nth-child(even) {background: #F0F0F0;}
 		table tr:nth-child(odd) {background: #FFFFFF;}
+		input.disabled {background-color:#D4D0C8; color: #80808D;}
 	</style>
 </head>
 <body>
@@ -289,7 +352,13 @@ ElseIf Not Request.QueryString("attributes") = "" Then
 					<strong>Last Modified Date</strong>
 				</td>
 				<td colspan='2'>
-					<input name='date' size='30' value='<%=objItem.DateLastModified%>'>
+<%
+	If Right(strItem, 1) = "\" Then
+		Response.Write Tab(4) & "<input name='date' size='30' value='" & objItem.DateLastModified & "' readonly='true' class='disabled'>"
+	Else
+		Response.Write Tab(4) & "<input name='date' size='30' value='" & objItem.DateLastModified & "'>"
+	End If
+%>
 				</td>
 			</tr>
 			<tr>
@@ -386,8 +455,9 @@ ElseIf Not Request.QueryString("edit") = "" Then
 	If Err.Number = 0 Then
 %>
 	<form method='post' action=''>
-		<input type='text' name='name' value='<%=Request.QueryString("edit")%>' size='50'>
-		<span>Change File Encoding</span>
+		<span>File</span>
+		<input type='text' name='name' value='<%=Request.QueryString("edit")%>' size='50' readonly='true' class='disabled'>
+		<span>Encoding</span>
 		<select onchange='this.options[this.selectedIndex].value && (window.location = scriptName() + "?edit=" + document.getElementsByName("name")[0].value + "&encoding=" + this.options[this.selectedIndex].value);'>
 <%
 		For Each strCurrentEncoding In arEncodings
@@ -399,10 +469,10 @@ ElseIf Not Request.QueryString("edit") = "" Then
 		Next
 %>
 		</select>
-		<div style="margin:5px 0;">
-			<textarea style='width:100%;height:80%' name='contents'><%=strData%></textarea>
+		<div style="margin:5px 0;height:500px;">
+			<textarea style='width:100%;height:100%' name='contents'><%=strData%></textarea>
 		</div>
-		<input type='submit'>
+		<input type='submit' value='Save'>
 	</form>
 <%
 	End If
@@ -453,7 +523,7 @@ Else
 	%>
 	<form method='post' action='' name='form'>
 		<table border='1'>
-			<tr>
+			<thead><tr>
 				<th><input type='checkbox' onclick='toggle(this)' /></th>
 				<th>Type</th>
 				<th>Name</th>
@@ -462,7 +532,8 @@ Else
 				<th>Date Last Accessed</th>
 				<th>Date Last Modified</th>
 				<th>Attributes</th>
-			</tr>
+			</tr></thead>
+			<tbody>
 
 <%
 		If Not Request.Form("create") = "" Then
@@ -585,15 +656,16 @@ Else
 				<td colspan='8'><span>Selected File(s) / Folder(s)</span>
 					<select name='action'>
 						<option value=''>-- Select an Action --</option>
-						<option value='attributes'>Attributes</option>
+						<option value='view'>View</option>
+						<option value='download'>Download</option>
+						<option value='edit'>Edit</option>
 						<option value='copy'>Copy</option>
 						<option value='copyo'>Copy (Overwrite)</option>
-						<option value='edit'>Edit</option>
-						<option value='delete'>Delete</option>
-						<option value='download'>Download</option>
 						<option value='move'>Move</option>
-						<option value='properties'>Properties</option>
 						<option value='rename'>Rename</option>
+						<option value='delete'>Delete</option>
+						<option value='attributes'>Attributes</option>
+						<option value='properties'>Properties</option>
 						<option value='unzip'>Unzip</option>
 						<option value='zip'>Zip (Folder)</option>
 					</select>
@@ -647,7 +719,7 @@ Else
 					</select>
 					<span>(<a href='#' onclick='window.open(scriptName() + "?server=variables");'>Server Variables</a>)</span>
 				</td>
-			</tr>
+			</tr></tbody>
 		</table>
 	</form>
 <%
@@ -730,6 +802,7 @@ End If
 					return false;
 				case "edit":
 				case "download":
+				case "view":
 					var checkboxes = document.getElementsByName("items");
 					for(var i = 0, n = checkboxes.length; i < n; i++)
 					{
